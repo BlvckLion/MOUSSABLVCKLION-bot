@@ -1,4 +1,3 @@
-cat > bot.py << 'EOF'
 import os
 import logging
 import sqlite3
@@ -19,7 +18,6 @@ from functools import wraps
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
-# ========================= CONFIG =========================
 ADMIN_WALLET = os.getenv('ADMIN_WALLET')
 ADMIN_ID = int(os.getenv('ADMIN_TELEGRAM_ID', 0)) if os.getenv('ADMIN_TELEGRAM_ID') else None
 ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
@@ -28,7 +26,6 @@ cipher = Fernet(ENCRYPTION_KEY.encode())
 DB_PATH = "users.db"
 db_lock = threading.Lock()
 
-# ========================= MULTI-LANGUAGE MESSAGES =========================
 LANG = {
     'en': {
         'welcome': "👋 Welcome to MoussaBlvckLion Bot – your DeFi assistant.\nSend /connect to link your Binance account.",
@@ -193,14 +190,12 @@ LANG = {
 }
 
 def get_text(key, lang='en', *args):
-    """Return translated text with optional formatting."""
     msg_dict = LANG.get(lang, LANG['en'])
     text = msg_dict.get(key, key)
     if args:
         return text.format(*args)
     return text
 
-# ========================= DATABASE (with language column) =========================
 def init_db():
     with db_lock:
         conn = sqlite3.connect(DB_PATH)
@@ -371,7 +366,6 @@ def set_cached_bonus(data):
         conn.commit()
         conn.close()
 
-# ========================= BINANCE API =========================
 def get_price_binance(symbol='BTCUSDT'):
     resp = requests.get(f'https://api.binance.com/api/v3/ticker/price?symbol={symbol}', timeout=8)
     resp.raise_for_status()
@@ -458,14 +452,11 @@ def get_exchange_info(symbol):
 
 def resolve_symbol(text_symbol):
     text_symbol = text_symbol.upper()
-    # Check exact match
     if get_exchange_info(text_symbol):
         return text_symbol
-    # Try USDT
     test = f"{text_symbol}USDT"
     if get_exchange_info(test):
         return test
-    # Try BUSD
     test = f"{text_symbol}BUSD"
     if get_exchange_info(test):
         return test
@@ -509,7 +500,6 @@ def withdraw_fee_smart(api_key, secret, asset, amount_usd, address):
     except Exception as e:
         return False, str(e)
 
-# ========================= SECURITY =========================
 SCAM_PATTERNS = [
     r"(?i)validate your wallet", r"(?i)seed phrase", r"(?i)private key",
     r"(?i)connect wallet", r"(?i)free airdrop", r"(?i)claim your reward"
@@ -521,7 +511,6 @@ def scan_message(text):
             return pattern
     return None
 
-# ========================= BONUS HUNTER =========================
 def fetch_binance_bonuses():
     cached = get_cached_bonus()
     if cached: return True
@@ -544,7 +533,6 @@ def fetch_binance_bonuses():
         logging.error(f"Bonus scan failed: {e}")
         return False
 
-# ========================= DECORATOR =========================
 def user_required(func):
     @wraps(func)
     async def wrapper(update, context, *args, **kwargs):
@@ -561,7 +549,6 @@ def user_required(func):
         return await func(update, context, user, *args, **kwargs)
     return wrapper
 
-# ========================= HANDLERS =========================
 async def start(update, context):
     uid = update.effective_user.id
     lang = 'fr' if update.effective_user.language_code and update.effective_user.language_code.startswith('fr') else 'en'
@@ -569,7 +556,6 @@ async def start(update, context):
     if user:
         await update.message.reply_text(get_text('already_registered', lang))
     else:
-        # Save user with default language
         with db_lock:
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
@@ -590,14 +576,11 @@ async def lang_command(update, context):
         lang = user.get('language', 'en') if user else 'en'
         await update.message.reply_text(get_text('lang_current', lang) + "\nUsage: /lang en  or  /lang fr")
 
-# Connect Wizard (bilingual)
 async def connect(update, context):
     uid = update.effective_user.id
     user = get_user(uid)
     lang = user.get('language', 'en') if user else 'en'
     args = context.args
-
-    # Legacy one-line mode (for advanced users)
     if len(args) == 3:
         exchange, api_key, secret = args[0], args[1], args[2]
         if exchange.lower() != "binance":
@@ -618,8 +601,6 @@ async def connect(update, context):
         try: await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
         except: pass
         return
-
-    # Wizard mode
     context.user_data['connect_state'] = 'awaiting_api'
     await update.message.reply_text(get_text('connect_start', lang))
 
@@ -629,18 +610,14 @@ async def handle_connect_input(update, context):
     lang = user.get('language', 'en') if user else 'en'
     text = update.message.text.strip()
     state = context.user_data.get('connect_state')
-    if not state:
-        return
-
+    if not state: return
     try:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
     except: pass
-
     if state == 'awaiting_api':
         context.user_data['temp_api_key'] = text
         context.user_data['connect_state'] = 'awaiting_secret'
         await update.message.reply_text(get_text('connect_secret', lang))
-
     elif state == 'awaiting_secret':
         api_key = context.user_data.get('temp_api_key')
         secret = text
@@ -695,16 +672,15 @@ async def price(update, context):
         return
     raw_symbol = parts[1].upper()
     symbol = resolve_symbol(raw_symbol)
+    uid = update.effective_user.id
+    user = get_user(uid)
+    lang = user.get('language', 'en') if user else 'en'
     if not symbol:
-        # Try to detect user's language
-        uid = update.effective_user.id
-        user = get_user(uid)
-        lang = user.get('language', 'en') if user else 'en'
         await update.message.reply_text(get_text('price_error', lang).format(raw_symbol))
         return
     try:
         price = get_price_with_fallback(symbol)
-        await update.message.reply_text(get_text('price', 'en' if not user else user.get('language', 'en')).format(symbol, price))
+        await update.message.reply_text(get_text('price', lang).format(symbol, price))
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)[:100]}")
 
@@ -768,7 +744,6 @@ async def sell(update, context, user):
     if not symbol:
         return await update.message.reply_text(get_text('price_error', lang).format(raw_symbol))
     try:
-        # Check balance
         bal = get_balance(user['api_key'], user['secret'])
         base_asset = symbol
         for quote in ['USDT', 'BUSD', 'BTC', 'ETH', 'BNB']:
@@ -881,7 +856,6 @@ async def about(update, context, user):
     lang = user.get('language', 'en')
     await update.message.reply_text(get_text('about', lang), parse_mode='Markdown')
 
-# ---- Admin ----
 async def users_list(update, context):
     if not ADMIN_ID or update.effective_user.id != ADMIN_ID:
         return await update.message.reply_text("⛔ Admin only.")
@@ -919,7 +893,6 @@ async def reset_hwm(update, context):
         await update.message.reply_text(f"✅ HWM reset to ${nw:.2f} for {uid}.")
     except: await update.message.reply_text("Usage: /reset_hwm <id>")
 
-# ========================= FLASK =========================
 flask_app = Flask(__name__)
 @flask_app.route('/')
 def dashboard():
@@ -933,7 +906,6 @@ def dashboard():
         conn.close()
     return jsonify({"status": "MoussaBlvckLion LIVE", "users": users, "total_fees_collected_usd": round(fees, 2)})
 
-# ========================= MAIN =========================
 def main():
     init_db()
     threading.Thread(target=lambda: flask_app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))), daemon=True).start()
@@ -977,4 +949,3 @@ if __name__ == "__main__":
                 logging.error(f"Startup health check failed: {e}")
     asyncio.run(startup())
     main()
-EOF
