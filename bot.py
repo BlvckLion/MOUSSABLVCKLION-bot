@@ -7,6 +7,7 @@ import time
 import requests
 import re
 import threading
+import asyncio
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
@@ -1229,10 +1230,6 @@ def main():
 
     while True:
         try:
-            # Create a new event loop for each run (fixes "Event loop is closed")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
             logging.info("🔄 Starting Telegram bot...")
             app = Application.builder().token(token).read_timeout(30).build()
 
@@ -1262,11 +1259,11 @@ def main():
             app.add_handler(CallbackQueryHandler(handle_callback))
 
             logging.info("✅ ULTIMATE BILINGUAL BOT STARTED (English/Français).")
+            # This blocks and handles its own event loop
             app.run_polling()
 
         except Exception as e:
             logging.error(f"❌ Bot crashed: {e}")
-            # If the loop is closed, we break and restart the whole while loop anyway
             logging.info("🔄 Restarting in 5 seconds...")
             time.sleep(5)
 
