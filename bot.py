@@ -236,8 +236,7 @@ def binance_request(api_key, secret, endpoint, params=None, method='GET'):
     headers = {'X-MBX-APIKEY': api_key}
     full_url = f"{url}?{query_string}&signature={signature}"
 
-    # DEBUG: log the first few chars of the secret and the full URL
-    logging.info(f"🔑 Secret starts with: {secret[:4]}...")
+    logging.info(f"🔑 API key starts with: {api_key[:4]}")
     logging.info(f"📡 Full URL: {full_url[:200]}...")
 
     try:
@@ -265,7 +264,21 @@ def test_binance_keys(api_key, secret):
     except Exception as e:
         logging.error(f"❌ Binance test failed: {e}")
         logging.error(traceback.format_exc())
-        return False, str(e)
+        # Include the URL in the error message if available
+        error_msg = str(e)
+        try:
+            # Reconstruct the URL to include in the error
+            base_url = 'https://api.binance.com'
+            endpoint = '/api/v3/account'
+            timestamp = int(time.time() * 1000)
+            params = {'timestamp': timestamp, 'recvWindow': 5000}
+            query_string = '&'.join([f"{k}={v}" for k, v in sorted(params.items())])
+            signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
+            full_url = f"{base_url}{endpoint}?{query_string}&signature={signature}"
+            error_msg += f"\n\n🔗 Request URL: {full_url[:300]}..."
+        except:
+            pass
+        return False, error_msg
 
 def get_balance(api_key, secret):
     data = binance_request(api_key, secret, '/api/v3/account')
@@ -466,6 +479,8 @@ async def handle_connect_input(update: Update, context: ContextTypes.DEFAULT_TYP
     state = context.user_data.get('connect_state')
     if not state:
         return
+
+    logging.info(f"🔍 Wizard state: {state} for user {uid}")
 
     try:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
