@@ -138,13 +138,15 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    logging.info("✅ Database initialized.")
+    logging.info("✅ Database initialized with correct schema.")
 
 def register_user(telegram_id, first_name, language):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('INSERT OR IGNORE INTO users (telegram_id, first_name, language) VALUES (?, ?, ?)',
-              (telegram_id, first_name, language))
+    c.execute('''
+        INSERT OR IGNORE INTO users (telegram_id, first_name, language)
+        VALUES (?, ?, ?)
+    ''', (telegram_id, first_name, language))
     conn.commit()
     conn.close()
 
@@ -220,7 +222,7 @@ def update_daily_loss(uid, loss):
     conn.commit()
     conn.close()
 
-# ------------------------- BINANCE API -------------------------
+# ------------------------- BINANCE API HELPERS -------------------------
 def binance_request(api_key, secret, endpoint, params=None, method='GET'):
     base_url = 'https://api.binance.com'
     url = base_url + endpoint
@@ -233,7 +235,7 @@ def binance_request(api_key, secret, endpoint, params=None, method='GET'):
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     headers = {'X-MBX-APIKEY': api_key}
     full_url = f"{url}?{query_string}&signature={signature}"
-    logging.info(f"📡 Sending request to Binance...")
+    logging.info(f"📡 Sending request to Binance (timeout 5s)...")
     try:
         if method == 'GET':
             resp = requests.get(full_url, headers=headers, timeout=5)
@@ -242,7 +244,7 @@ def binance_request(api_key, secret, endpoint, params=None, method='GET'):
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.Timeout:
-        logging.error("❌ Binance request timed out.")
+        logging.error("❌ Binance request timed out after 5 seconds.")
         raise
     except Exception as e:
         logging.error(f"❌ Binance request error: {e}")
@@ -253,7 +255,7 @@ def test_binance_keys(api_key, secret):
         binance_request(api_key, secret, '/api/v3/account')
         return True, "Valid."
     except requests.exceptions.Timeout:
-        return False, "⏱️ Timeout: Binance API did not respond. Check your internet or VPN."
+        return False, "⏱️ Timeout: Binance API did not respond within 5 seconds. Check your internet or VPN."
     except requests.exceptions.ConnectionError:
         return False, "🌐 Connection error: Cannot reach Binance. Check your network."
     except Exception as e:
@@ -296,7 +298,7 @@ def resolve_symbol(text_symbol):
         return test
     return None
 
-# ------------------------- FLASK DASHBOARD -------------------------
+# ------------------------- FLASK DASHBOARD (with /ip) -------------------------
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -371,7 +373,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     register_user(uid, first_name, lang)
-    await update.message.reply_text(get_text('welcome', lang, name=first_name, lang=lang))
+    await update.message.reply_text(
+        get_text('welcome', lang, name=first_name, lang=lang)
+    )
     await update.message.reply_text(get_text('terms_text', lang), parse_mode='Markdown')
 
 async def accept_terms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -401,7 +405,6 @@ async def me(update: Update, context: ContextTypes.DEFAULT_TYPE):
         get_text('me', lang,
                  id=user_data['telegram_id'],
                  name=user_data['first_name'],
-                 lang=user_data['language'],
                  date=user_data['registered_at'],
                  terms=terms),
         parse_mode='Markdown'
@@ -422,10 +425,12 @@ async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lang = user_data['language'] if user_data else 'en'
         await update.message.reply_text(get_text('lang_current', lang) + "\n" + get_text('lang_usage', lang))
         return
+
     new_lang = args[0].lower()
     set_user_language(uid, new_lang)
-    await update.message.reply_text(get_text('lang_set', new_lang, lang=new_lang))
+    await update.message.reply_text(get_text('lang_set', new_lang))
 
+# ------------------------- CONNECT WIZARD -------------------------
 async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user = get_user(uid)
@@ -434,6 +439,7 @@ async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text('not_registered', lang))
         return
     lang = user['language']
+
     if user.get('api_key'):
         await update.message.reply_text(get_text('connect_already', lang))
     context.user_data['connect_state'] = 'awaiting_api'
@@ -486,6 +492,7 @@ async def handle_connect_input(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.clear()
         await update.message.reply_text(get_text('connect_success', lang))
 
+# ------------------------- BALANCE & PRICE -------------------------
 @terms_required
 @keys_required
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE, user, api_key, secret):
@@ -524,6 +531,7 @@ async def price(update: Update, context: ContextTypes.DEFAULT_TYPE, user, api_ke
         logging.error(traceback.format_exc())
         await update.message.reply_text(get_text('price_error', lang).format(symbol, str(e)))
 
+# ------------------------- TRADING (Layer 6) -------------------------
 @terms_required
 @keys_required
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE, user, api_key, secret):
