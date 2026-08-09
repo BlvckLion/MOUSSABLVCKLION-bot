@@ -222,7 +222,7 @@ def update_daily_loss(uid, loss):
     conn.commit()
     conn.close()
 
-# ------------------------- BINANCE API HELPERS -------------------------
+# ------------------------- BINANCE API HELPERS (with debug logs) -------------------------
 def binance_request(api_key, secret, endpoint, params=None, method='GET'):
     base_url = 'https://api.binance.com'
     url = base_url + endpoint
@@ -235,7 +235,11 @@ def binance_request(api_key, secret, endpoint, params=None, method='GET'):
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     headers = {'X-MBX-APIKEY': api_key}
     full_url = f"{url}?{query_string}&signature={signature}"
-    logging.info(f"📡 Sending request to Binance (timeout 5s)...")
+
+    # DEBUG: log the first few chars of the secret and the full URL
+    logging.info(f"🔑 Secret starts with: {secret[:4]}...")
+    logging.info(f"📡 Full URL: {full_url[:200]}...")
+
     try:
         if method == 'GET':
             resp = requests.get(full_url, headers=headers, timeout=5)
