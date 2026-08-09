@@ -1,5 +1,5 @@
 python-telegram-bot==22.8
+flask==3.1.2
 python-dotenv==1.2.2
 requests==2.34.2
 cryptography==50.0.0
-flask==3.1.2

@@ -222,7 +222,7 @@ def update_daily_loss(uid, loss):
     conn.commit()
     conn.close()
 
-# ------------------------- BINANCE API HELPERS (with debug logs) -------------------------
+# ------------------------- BINANCE API HELPERS -------------------------
 def binance_request(api_key, secret, endpoint, params=None, method='GET'):
     base_url = 'https://api.binance.com'
     url = base_url + endpoint
@@ -235,10 +235,8 @@ def binance_request(api_key, secret, endpoint, params=None, method='GET'):
     signature = hmac.new(secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
     headers = {'X-MBX-APIKEY': api_key}
     full_url = f"{url}?{query_string}&signature={signature}"
-
     logging.info(f"🔑 API key starts with: {api_key[:4]}")
     logging.info(f"📡 Full URL: {full_url[:200]}...")
-
     try:
         if method == 'GET':
             resp = requests.get(full_url, headers=headers, timeout=5)
@@ -258,16 +256,15 @@ def test_binance_keys(api_key, secret):
         binance_request(api_key, secret, '/api/v3/account')
         return True, "Valid."
     except requests.exceptions.Timeout:
-        return False, "⏱️ Timeout: Binance API did not respond within 5 seconds. Check your internet or VPN."
+        return False, "⏱️ Timeout: Binance API did not respond within 5 seconds."
     except requests.exceptions.ConnectionError:
-        return False, "🌐 Connection error: Cannot reach Binance. Check your network."
+        return False, "🌐 Connection error: Cannot reach Binance."
     except Exception as e:
         logging.error(f"❌ Binance test failed: {e}")
         logging.error(traceback.format_exc())
-        # Include the URL in the error message if available
         error_msg = str(e)
+        # Include URL in error
         try:
-            # Reconstruct the URL to include in the error
             base_url = 'https://api.binance.com'
             endpoint = '/api/v3/account'
             timestamp = int(time.time() * 1000)
@@ -315,7 +312,7 @@ def resolve_symbol(text_symbol):
         return test
     return None
 
-# ------------------------- FLASK DASHBOARD (with /ip and /outip) -------------------------
+# ------------------------- FLASK DASHBOARD (with /binance-ping) -------------------------
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -340,6 +337,14 @@ def outip():
     try:
         ip = requests.get('https://api.ipify.org', timeout=5).text
         return jsonify({"outbound_ip": ip})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@flask_app.route('/binance-ping')
+def binance_ping():
+    try:
+        resp = requests.get('https://api.binance.com/api/v3/ping', timeout=5)
+        return jsonify({"status": resp.status_code, "response": resp.text})
     except Exception as e:
         return jsonify({"error": str(e)})
 
@@ -455,7 +460,6 @@ async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     set_user_language(uid, new_lang)
     await update.message.reply_text(get_text('lang_set', new_lang))
 
-# ------------------------- CONNECT WIZARD -------------------------
 async def connect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user = get_user(uid)
@@ -519,7 +523,6 @@ async def handle_connect_input(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.clear()
         await update.message.reply_text(get_text('connect_success', lang))
 
-# ------------------------- BALANCE & PRICE -------------------------
 @terms_required
 @keys_required
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE, user, api_key, secret):
@@ -558,7 +561,6 @@ async def price(update: Update, context: ContextTypes.DEFAULT_TYPE, user, api_ke
         logging.error(traceback.format_exc())
         await update.message.reply_text(get_text('price_error', lang).format(symbol, str(e)))
 
-# ------------------------- TRADING (Layer 6) -------------------------
 @terms_required
 @keys_required
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE, user, api_key, secret):
@@ -707,7 +709,6 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_connect_input))
 
-    # Add error handler
     app.add_error_handler(error_handler)
 
     logging.info("✅ Layer 6 started. Trading (Buy/Sell) active.")
