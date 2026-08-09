@@ -138,7 +138,7 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    logging.info("✅ Database initialized with correct schema.")
+    logging.info("✅ Database initialized.")
 
 def register_user(telegram_id, first_name, language):
     conn = sqlite3.connect(DB_PATH)
@@ -298,7 +298,7 @@ def resolve_symbol(text_symbol):
         return test
     return None
 
-# ------------------------- FLASK DASHBOARD (with /ip) -------------------------
+# ------------------------- FLASK DASHBOARD (with /ip and /outip) -------------------------
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -315,6 +315,14 @@ def get_ip():
     try:
         ip = requests.get('https://api.ipify.org', timeout=5).text
         return jsonify({"ip": ip})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@flask_app.route('/outip')
+def outip():
+    try:
+        ip = requests.get('https://api.ipify.org', timeout=5).text
+        return jsonify({"outbound_ip": ip})
     except Exception as e:
         return jsonify({"error": str(e)})
 
